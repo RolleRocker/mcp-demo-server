@@ -1,0 +1,6 @@
+{
+  "name": "mcp-demo-server-backup",
+  "version": "1.0.0",
+  "description": "Backup of Node.js version",
+  "private": true
+}
