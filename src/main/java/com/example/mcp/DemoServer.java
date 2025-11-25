@@ -1,17 +1,26 @@
 package com.example.mcp;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
-
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 
 /**
  * MCP Demo Server - Demonstrates the core capabilities of the Model Context Protocol
@@ -22,7 +31,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Prompts: Pre-configured prompt templates
  */
 public class DemoServer {
-    private static final Gson gson = new GsonBuilder().setPrettyPrinting().create();
+    private static final Gson gson = new GsonBuilder().create();
     private static final Map<Integer, Note> notes = new ConcurrentHashMap<>();
     private static int noteIdCounter = 1;
     
@@ -35,7 +44,6 @@ public class DemoServer {
     }
 
     public static void main(String[] args) {
-        System.err.println("MCP Demo Server starting on stdio...");
         DemoServer server = new DemoServer();
         server.run();
     }
@@ -58,36 +66,58 @@ public class DemoServer {
             String method = request.get("method").getAsString();
             JsonObject params = request.has("params") ? request.getAsJsonObject("params") : new JsonObject();
             
+            System.err.println("[REQUEST] Method: " + method);
+            
+            // Handle notifications (no id, no response needed)
+            if (!request.has("id")) {
+                if ("notifications/initialized".equals(method)) {
+                    System.err.println("[NOTIFICATION] Server initialization complete");
+                    return;
+                }
+                // Unknown notification - ignore
+                System.err.println("[NOTIFICATION] Unknown notification: " + method);
+                return;
+            }
+            
             JsonObject response = new JsonObject();
             response.addProperty("jsonrpc", "2.0");
-            
-            if (request.has("id")) {
-                response.add("id", request.get("id"));
-            }
+            response.add("id", request.get("id"));
 
             switch (method) {
                 case "initialize":
+                    System.err.println("[INIT] Initializing MCP server");
                     response.add("result", handleInitialize());
                     break;
                 case "tools/list":
+                    System.err.println("[TOOLS] Listing available tools");
                     response.add("result", handleListTools());
                     break;
                 case "tools/call":
+                    String toolName = params.has("name") ? params.get("name").getAsString() : "unknown";
+                    System.err.println("[TOOL] Calling tool: " + toolName);
                     response.add("result", handleCallTool(params));
+                    System.err.println("[TOOL] Tool '" + toolName + "' completed successfully");
                     break;
                 case "resources/list":
+                    System.err.println("[RESOURCES] Listing resources");
                     response.add("result", handleListResources());
                     break;
                 case "resources/read":
+                    String resourceUri = params.has("uri") ? params.get("uri").getAsString() : "unknown";
+                    System.err.println("[RESOURCE] Reading resource: " + resourceUri);
                     response.add("result", handleReadResource(params));
                     break;
                 case "prompts/list":
+                    System.err.println("[PROMPTS] Listing prompts");
                     response.add("result", handleListPrompts());
                     break;
                 case "prompts/get":
+                    String promptName = params.has("name") ? params.get("name").getAsString() : "unknown";
+                    System.err.println("[PROMPT] Getting prompt: " + promptName);
                     response.add("result", handleGetPrompt(params));
                     break;
                 default:
+                    System.err.println("[ERROR] Unknown method: " + method);
                     JsonObject error = new JsonObject();
                     error.addProperty("code", -32601);
                     error.addProperty("message", "Method not found: " + method);
@@ -96,7 +126,7 @@ public class DemoServer {
 
             writer.println(gson.toJson(response));
         } catch (Exception e) {
-            System.err.println("Error handling request: " + e.getMessage());
+            System.err.println("[ERROR] Exception: " + e.getMessage());
             e.printStackTrace(System.err);
         }
     }
@@ -211,6 +241,67 @@ public class DemoServer {
         weatherTool.add("inputSchema", weatherSchema);
         tools.add(weatherTool);
         
+        // Read file tool
+        JsonObject readFileTool = new JsonObject();
+        readFileTool.addProperty("name", "read_file");
+        readFileTool.addProperty("description", "Read the contents of a text file");
+        
+        JsonObject readFileSchema = new JsonObject();
+        readFileSchema.addProperty("type", "object");
+        JsonObject readFileProps = new JsonObject();
+        
+        JsonObject filePathProp = new JsonObject();
+        filePathProp.addProperty("type", "string");
+        filePathProp.addProperty("description", "The path to the file to read");
+        readFileProps.add("file_path", filePathProp);
+        
+        readFileSchema.add("properties", readFileProps);
+        readFileSchema.add("required", gson.toJsonTree(Arrays.asList("file_path")));
+        readFileTool.add("inputSchema", readFileSchema);
+        tools.add(readFileTool);
+        
+        // Write file tool
+        JsonObject writeFileTool = new JsonObject();
+        writeFileTool.addProperty("name", "write_file");
+        writeFileTool.addProperty("description", "Write content to a text file (creates or overwrites)");
+        
+        JsonObject writeFileSchema = new JsonObject();
+        writeFileSchema.addProperty("type", "object");
+        JsonObject writeFileProps = new JsonObject();
+        
+        JsonObject writeFilePathProp = new JsonObject();
+        writeFilePathProp.addProperty("type", "string");
+        writeFilePathProp.addProperty("description", "The path to the file to write");
+        writeFileProps.add("file_path", writeFilePathProp);
+        
+        JsonObject writeContentProp = new JsonObject();
+        writeContentProp.addProperty("type", "string");
+        writeContentProp.addProperty("description", "The content to write to the file");
+        writeFileProps.add("content", writeContentProp);
+        
+        writeFileSchema.add("properties", writeFileProps);
+        writeFileSchema.add("required", gson.toJsonTree(Arrays.asList("file_path", "content")));
+        writeFileTool.add("inputSchema", writeFileSchema);
+        tools.add(writeFileTool);
+        
+        // List directory tool
+        JsonObject listDirTool = new JsonObject();
+        listDirTool.addProperty("name", "list_directory");
+        listDirTool.addProperty("description", "List files and directories in a folder");
+        
+        JsonObject listDirSchema = new JsonObject();
+        listDirSchema.addProperty("type", "object");
+        JsonObject listDirProps = new JsonObject();
+        
+        JsonObject dirPathProp = new JsonObject();
+        dirPathProp.addProperty("type", "string");
+        dirPathProp.addProperty("description", "The directory path to list (defaults to current directory)");
+        listDirProps.add("directory_path", dirPathProp);
+        
+        listDirSchema.add("properties", listDirProps);
+        listDirTool.add("inputSchema", listDirSchema);
+        tools.add(listDirTool);
+        
         result.add("tools", gson.toJsonTree(tools));
         return result;
     }
@@ -235,6 +326,15 @@ public class DemoServer {
                     break;
                 case "get_weather":
                     content.add(createTextContent(handleGetWeather(args)));
+                    break;
+                case "read_file":
+                    content.add(createTextContent(handleReadFile(args)));
+                    break;
+                case "write_file":
+                    content.add(createTextContent(handleWriteFile(args)));
+                    break;
+                case "list_directory":
+                    content.add(createTextContent(handleListDirectory(args)));
                     break;
                 default:
                     throw new IllegalArgumentException("Unknown tool: " + name);
@@ -322,6 +422,104 @@ public class DemoServer {
         
         return String.format("Weather in %s:\n🌡️ Temperature: %d°C\n☁️ Condition: %s\n💨 Wind: %d km/h", 
             city, temp, condition, wind);
+    }
+
+    private String handleReadFile(JsonObject args) {
+        String filePath = args.get("file_path").getAsString();
+        System.err.println("[FILE] Reading file: " + filePath);
+        
+        try {
+            Path path = Paths.get(filePath);
+            if (!Files.exists(path)) {
+                System.err.println("[FILE] Error: File not found: " + filePath);
+                return "Error: File not found: " + filePath;
+            }
+            if (!Files.isRegularFile(path)) {
+                System.err.println("[FILE] Error: Not a regular file: " + filePath);
+                return "Error: Not a regular file: " + filePath;
+            }
+            
+            String content = new String(Files.readAllBytes(path), StandardCharsets.UTF_8);
+            System.err.println("[FILE] Successfully read " + Files.size(path) + " bytes from: " + filePath);
+            return "File contents of " + filePath + ":\n\n" + content;
+        } catch (IOException e) {
+            System.err.println("[FILE] Error reading file: " + e.getMessage());
+            return "Error reading file: " + e.getMessage();
+        }
+    }
+
+    private String handleWriteFile(JsonObject args) {
+        String filePath = args.get("file_path").getAsString();
+        String content = args.get("content").getAsString();
+        System.err.println("[FILE] Writing to file: " + filePath + " (" + content.length() + " bytes)");
+        
+        try {
+            Path path = Paths.get(filePath);
+            // Create parent directories if they don't exist
+            Path parent = path.getParent();
+            if (parent != null && !Files.exists(parent)) {
+                System.err.println("[FILE] Creating parent directories: " + parent);
+                Files.createDirectories(parent);
+            }
+            
+            Files.write(path, content.getBytes(StandardCharsets.UTF_8));
+            System.err.println("[FILE] Successfully wrote " + content.length() + " bytes to: " + filePath);
+            return "File written successfully: " + filePath;
+        } catch (IOException e) {
+            System.err.println("[FILE] Error writing file: " + e.getMessage());
+            return "Error writing file: " + e.getMessage();
+        }
+    }
+
+    private String handleListDirectory(JsonObject args) {
+        String dirPath = args.has("directory_path") ? args.get("directory_path").getAsString() : ".";
+        System.err.println("[DIR] Listing directory: " + dirPath);
+        
+        try {
+            Path path = Paths.get(dirPath);
+            if (!Files.exists(path)) {
+                System.err.println("[DIR] Error: Directory not found: " + dirPath);
+                return "Error: Directory not found: " + dirPath;
+            }
+            if (!Files.isDirectory(path)) {
+                System.err.println("[DIR] Error: Not a directory: " + dirPath);
+                return "Error: Not a directory: " + dirPath;
+            }
+            
+            StringBuilder result = new StringBuilder("Contents of " + dirPath + ":\n\n");
+            List<Path> entries = new ArrayList<>();
+            
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(path)) {
+                for (Path entry : stream) {
+                    entries.add(entry);
+                }
+            }
+            
+            entries.sort(Comparator.comparing(Path::getFileName));
+            System.err.println("[DIR] Found " + entries.size() + " entries");
+            
+            for (Path entry : entries) {
+                String name = entry.getFileName().toString();
+                if (Files.isDirectory(entry)) {
+                    result.append("[DIR]  ").append(name).append("\n");
+                } else {
+                    long size = Files.size(entry);
+                    result.append("[FILE] ").append(name).append(" (").append(formatFileSize(size)).append(")\n");
+                }
+            }
+            
+            return result.toString();
+        } catch (IOException e) {
+            System.err.println("[DIR] Error listing directory: " + e.getMessage());
+            return "Error listing directory: " + e.getMessage();
+        }
+    }
+
+    private String formatFileSize(long bytes) {
+        if (bytes <= 0) return "0 B";
+        final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+        int digitGroups = (int) (Math.log10(bytes) / Math.log10(1024));
+        return String.format("%.1f %s", bytes / Math.pow(1024, digitGroups), units[digitGroups]);
     }
 
     // ============================================================================
