@@ -26,8 +26,7 @@ $inputFile = [System.IO.Path]::GetTempFileName()
 $requests | Out-File -FilePath $inputFile -Encoding utf8
 
 # Prepare temp files for output capture
-$outFile = [System.IO.Path]::GetTempFileName()
-$errFile = [System.IO.Path]::GetTempFileName()
+
 
 Write-Host "Running integration test against $jar"
 

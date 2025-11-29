@@ -1,14 +1,13 @@
 package com.example.mcp;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 
+import org.junit.jupiter.api.AfterEach;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 
 public class IntegrationJvmTest {
     private final PrintStream originalOut = System.out;
@@ -19,7 +18,7 @@ public class IntegrationJvmTest {
     private ByteArrayOutputStream errBuf;
 
     @BeforeEach
-    void setUp() {
+    public void setUp() {
         outBuf = new ByteArrayOutputStream();
         errBuf = new ByteArrayOutputStream();
         System.setOut(new PrintStream(outBuf));
@@ -27,7 +26,7 @@ public class IntegrationJvmTest {
     }
 
     @AfterEach
-    void tearDown() {
+    public void tearDown() {
         System.setOut(originalOut);
         System.setErr(originalErr);
         System.setIn(originalIn);

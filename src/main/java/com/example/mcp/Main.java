@@ -55,36 +55,26 @@ public class Main {
                     response.add("id", request.get("id"));
 
                     switch (method) {
-                        case "initialize":
-                            response.add("result", initializeResult());
-                            break;
-                        case "tools/list":
-                            response.add("result", toolsManager.listTools());
-                            break;
-                        case "tools/call":
-                            response.add("result", toolsManager.callTool(params));
-                            break;
-                        case "resources/list":
-                            response.add("result", resourceManager.listResources());
-                            break;
-                        case "resources/read":
-                            response.add("result", resourceManager.readResource(params));
-                            break;
-                        case "prompts/list":
-                            response.add("result", promptManager.listPrompts());
-                            break;
-                        case "prompts/get":
-                            response.add("result", promptManager.getPrompt(params));
-                            break;
-                        default:
+                        case "initialize" -> response.add("result", initializeResult());
+                        case "tools/list" -> response.add("result", toolsManager.listTools());
+                        case "tools/call" -> response.add("result", toolsManager.callTool(params));
+                        case "resources/list" -> response.add("result", resourceManager.listResources());
+                        case "resources/read" -> response.add("result", resourceManager.readResource(params));
+                        case "prompts/list" -> response.add("result", promptManager.listPrompts());
+                        case "prompts/get" -> response.add("result", promptManager.getPrompt(params));
+                        default -> {
                             JsonObject error = new JsonObject();
                             error.addProperty("code", -32601);
                             error.addProperty("message", "Method not found: " + method);
                             response.add("error", error);
+                        }
                     }
 
                     writer.println(gson.toJson(response));
-                } catch (Exception e) {
+                } catch (com.google.gson.JsonSyntaxException e) {
+                    SimpleLogger.log("[ERROR] Invalid JSON: " + e.getMessage());
+                    e.printStackTrace(System.err);
+                } catch (IllegalArgumentException e) {
                     SimpleLogger.log("[ERROR] Request processing failed: " + e.getMessage());
                     e.printStackTrace(System.err);
                 }

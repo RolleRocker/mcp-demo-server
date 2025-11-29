@@ -37,20 +37,18 @@ public class PromptManager {
         List<JsonObject> messages = new ArrayList<>();
 
         switch (name) {
-            case "helpful_assistant": {
+            case "helpful_assistant" -> {
                 String task = args.has("task") ? args.get("task").getAsString() : "general assistance";
                 String helpfulText = String.format("You are a helpful, friendly, and knowledgeable assistant. Please help me with the following task:\n\n%s\n\nProvide clear, accurate, and actionable guidance.", task);
                 messages.add(createMessage("user", helpfulText));
-                break;
             }
-            case "code_reviewer": {
+            case "code_reviewer" -> {
                 String language = args.has("language") ? args.get("language").getAsString() : "unknown";
                 String code = args.has("code") ? args.get("code").getAsString() : "";
                 String reviewText = String.format("Please review the following %s code and provide constructive feedback:\n\n```%s\n%s\n```\n\nConsider:\n- Code quality and readability\n- Potential bugs or issues\n- Performance concerns\n- Best practices\n- Suggestions for improvement", language, language, code);
                 messages.add(createMessage("user", reviewText));
-                break;
             }
-            case "summarize_notes": {
+            case "summarize_notes" -> {
                 if (notes.isEmpty()) {
                     messages.add(createMessage("user", "There are no notes to summarize. Please create some notes first using the create_note tool."));
                 } else {
@@ -61,10 +59,8 @@ public class PromptManager {
                     });
                     messages.add(createMessage("user", notesText.toString()));
                 }
-                break;
             }
-            default:
-                throw new IllegalArgumentException("Unknown prompt: " + name);
+            default -> throw new IllegalArgumentException("Unknown prompt: " + name);
         }
 
         result.add("messages", gson.toJsonTree(messages));

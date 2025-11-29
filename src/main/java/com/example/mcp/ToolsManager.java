@@ -99,17 +99,17 @@ public class ToolsManager {
 
         try {
             switch (name) {
-                case "calculate": content.add(createTextContent(handleCalculate(args))); break;
-                case "create_note": content.add(createTextContent(handleCreateNote(args))); break;
-                case "list_notes": content.add(createTextContent(handleListNotes())); break;
-                case "get_weather": content.add(createTextContent(handleGetWeather(args))); break;
-                case "read_file": content.add(createTextContent(handleReadFile(args))); break;
-                case "write_file": content.add(createTextContent(handleWriteFile(args))); break;
-                case "list_directory": content.add(createTextContent(handleListDirectory(args))); break;
-                default: throw new IllegalArgumentException("Unknown tool: " + name);
+                case "calculate" -> content.add(createTextContent(handleCalculate(args)));
+                case "create_note" -> content.add(createTextContent(handleCreateNote(args)));
+                case "list_notes" -> content.add(createTextContent(handleListNotes()));
+                case "get_weather" -> content.add(createTextContent(handleGetWeather(args)));
+                case "read_file" -> content.add(createTextContent(handleReadFile(args)));
+                case "write_file" -> content.add(createTextContent(handleWriteFile(args)));
+                case "list_directory" -> content.add(createTextContent(handleListDirectory(args)));
+                default -> throw new IllegalArgumentException("Unknown tool: " + name);
             }
             result.add("content", gson.toJsonTree(content));
-        } catch (Exception e) {
+        } catch (IllegalArgumentException | ArithmeticException e) {
             result.addProperty("isError", true);
             JsonObject errorContent = new JsonObject(); errorContent.addProperty("type", "text"); errorContent.addProperty("text", "Error: " + e.getMessage()); content.add(errorContent); result.add("content", gson.toJsonTree(content));
         }
@@ -124,11 +124,11 @@ public class ToolsManager {
         double b = args.get("b").getAsDouble();
         double result; String symbol;
         switch (operation) {
-            case "add": result = a + b; symbol = "+"; break;
-            case "subtract": result = a - b; symbol = "-"; break;
-            case "multiply": result = a * b; symbol = "×"; break;
-            case "divide": if (b == 0) throw new ArithmeticException("Division by zero is not allowed"); result = a / b; symbol = "÷"; break;
-            default: throw new IllegalArgumentException("Unknown operation: " + operation);
+            case "add" -> { result = a + b; symbol = "+"; }
+            case "subtract" -> { result = a - b; symbol = "-"; }
+            case "multiply" -> { result = a * b; symbol = "×"; }
+            case "divide" -> { if (b == 0) throw new ArithmeticException("Division by zero is not allowed"); result = a / b; symbol = "÷"; }
+            default -> throw new IllegalArgumentException("Unknown operation: " + operation);
         }
         return String.format("Result: %.2f %s %.2f = %.2f", a, symbol, b, result);
     }
@@ -170,7 +170,7 @@ public class ToolsManager {
             JsonObject geoData;
             try {
                 geoData = gson.fromJson(geoBody, JsonObject.class);
-            } catch (Exception e) {
+            } catch (com.google.gson.JsonSyntaxException e) {
                 SimpleLogger.log("[WEATHER] Failed to parse geocoding response: " + e.getMessage());
                 return "Error: Invalid response from geocoding service";
             }
@@ -213,9 +213,12 @@ public class ToolsManager {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "Error: Request interrupted while fetching weather";
-        } catch (Exception e) {
-            SimpleLogger.log("[WEATHER] Error fetching weather: " + e.getClass().getSimpleName() + " - " + e.getMessage());
-            return "Error fetching weather: " + e.getMessage();
+        } catch (IOException e) {
+            SimpleLogger.log("[WEATHER] Network error: " + e.getMessage());
+            return "Error fetching weather: Network error";
+        } catch (com.google.gson.JsonSyntaxException e) {
+            SimpleLogger.log("[WEATHER] Failed to parse weather response: " + e.getMessage());
+            return "Error fetching weather: Invalid response format";
         }
     }
 
