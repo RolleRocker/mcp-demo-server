@@ -21,9 +21,16 @@
         <configuration>
           <archive>
             <manifest>
-              <mainClass>com.example.mcp.DemoServer</mainClass>
+              <mainClass>com.example.mcp.Main</mainClass>
             </manifest>
           </archive>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.1.2</version>
+        <configuration>
+          <useModulePath>false</useModulePath>
         </configuration>
       </plugin>
       <plugin>
@@ -56,7 +63,7 @@
               <transformers>
                 <transformer />
                 <transformer>
-                  <mainClass>com.example.mcp.DemoServer</mainClass>
+                  <mainClass>com.example.mcp.Main</mainClass>
                 </transformer>
               </transformers>
               <finalName>mcp-demo-server</finalName>
@@ -66,6 +73,28 @@
       </plugin>
     </plugins>
   </build>
+  <dependencies>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.0</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <artifactId>junit-jupiter-api</artifactId>
+          <groupId>org.junit.jupiter</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>junit-jupiter-params</artifactId>
+          <groupId>org.junit.jupiter</groupId>
+        </exclusion>
+        <exclusion>
+          <artifactId>junit-jupiter-engine</artifactId>
+          <groupId>org.junit.jupiter</groupId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+  </dependencies>
   <properties>
     <maven.compiler.target>21</maven.compiler.target>
     <maven.compiler.source>21</maven.compiler.source>

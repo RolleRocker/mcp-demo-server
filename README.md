@@ -113,10 +113,12 @@ mcpDemo/
 │           └── com/
 │               └── example/
 │                   └── mcp/
-│                       └── DemoServer.java
+│                       └── Main.java
 ├── pom.xml
 └── README.md
 ```
+
+**Note:** This repository previously included Node/JavaScript artifacts (for example `index.js`, `package.json`, and a `node_modules/` folder). Those files have been removed to keep the project focused on the Java MCP demo server.
 
 ## Technical Details
 
