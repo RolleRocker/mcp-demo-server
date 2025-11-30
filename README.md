@@ -16,7 +16,10 @@ This MCP server demonstrates the three core primitives of MCP:
 - `calculate` - Perform arithmetic operations (add, subtract, multiply, divide)
 - `create_note` - Create and store notes in memory
 - `list_notes` - List all saved notes
-- `get_weather` - Get simulated weather data for any city
+- `get_weather` - Get real weather data for any city (using Open-Meteo API)
+- `read_file` - Read contents of a text file
+- `write_file` - Write content to a text file
+- `list_directory` - List files and directories
 
 ### Resources
 - `demo://info` - Server information and capabilities overview
@@ -30,21 +33,25 @@ This MCP server demonstrates the three core primitives of MCP:
 
 ## Requirements
 
-- Java 17 or higher
-- Maven 3.6 or higher
+- Java 21 or higher
+- No build tool installation required (Gradle wrapper included)
 
 ## Building the Server
 
 ```bash
-mvn clean package
+# On Windows
+.\gradlew.bat build
+
+# On macOS/Linux
+./gradlew build
 ```
 
-This will create a fat JAR file `target/mcp-demo-server.jar` with all dependencies included.
+This will create a fat JAR file `build/libs/mcp-demo-server.jar` with all dependencies included.
 
 ## Running the Server
 
 ```bash
-java -jar target/mcp-demo-server.jar
+java -jar build/libs/mcp-demo-server.jar
 ```
 
 The server runs on stdio transport, which is the standard for MCP servers.
@@ -62,7 +69,7 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json`:
   "mcpServers": {
     "demo": {
       "command": "java",
-      "args": ["-jar", "C:\\mcpDemo\\target\\mcp-demo-server.jar"]
+      "args": ["-jar", "C:\\mcpDemo\\build\\libs\\mcp-demo-server.jar"]
     }
   }
 }
@@ -77,7 +84,7 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
   "mcpServers": {
     "demo": {
       "command": "java",
-      "args": ["-jar", "/path/to/mcpDemo/target/mcp-demo-server.jar"]
+      "args": ["-jar", "/path/to/mcpDemo/build/libs/mcp-demo-server.jar"]
     }
   }
 }
@@ -113,8 +120,15 @@ mcpDemo/
 │           └── com/
 │               └── example/
 │                   └── mcp/
-│                       └── Main.java
-├── pom.xml
+│                       ├── Main.java
+│                       ├── ToolsManager.java
+│                       ├── ResourceManager.java
+│                       ├── PromptManager.java
+│                       └── Note.java
+├── build.gradle
+├── settings.gradle
+├── gradlew (Unix wrapper)
+├── gradlew.bat (Windows wrapper)
 └── README.md
 ```
 
@@ -124,9 +138,10 @@ mcpDemo/
 
 - **Protocol**: Model Context Protocol (MCP)
 - **Transport**: stdio
-- **Runtime**: Java 17+
-- **Build Tool**: Maven
-- **JSON Library**: Gson
+- **Runtime**: Java 21
+- **Build Tool**: Gradle 8.5 with Shadow plugin
+- **JSON Library**: Gson 2.10.1
+- **Logging**: SLF4J 2.0.9
 - **Implementation**: Pure Java with JSON-RPC over stdio
 
 ## Implementation Notes

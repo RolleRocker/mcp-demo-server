@@ -1,0 +1,71 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+application {
+    mainClass = 'com.example.mcp.Main'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JSON processing
+    implementation 'com.google.code.gson:gson:2.10.1'
+    
+    // Logging
+    implementation 'org.slf4j:slf4j-simple:2.0.9'
+    
+    // Testing (JUnit 5)
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.0'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+shadowJar {
+    archiveBaseName = 'mcp-demo-server'
+    archiveClassifier = ''
+    archiveVersion = ''
+    
+    // Exclude signature files and duplicates
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+    exclude 'META-INF/LICENSE*'
+    exclude 'META-INF/NOTICE*'
+    exclude 'META-INF/INDEX.LIST'
+    exclude 'META-INF/versions/*/module-info.class'
+    exclude 'META-INF/versions/**/module-info.class'
+    
+    manifest {
+        attributes 'Main-Class': 'com.example.mcp.Main'
+    }
+    
+    mergeServiceFiles()
+}
+
+tasks.named('build') {
+    dependsOn shadowJar
+}
+
+compileJava {
+    options.encoding = 'UTF-8'
+}
+
+compileTestJava {
+    options.encoding = 'UTF-8'
+}
