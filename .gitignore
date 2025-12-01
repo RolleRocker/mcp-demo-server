@@ -35,3 +35,5 @@ Thumbs.db
 
 # Logs
 *.log
+gradle.zip
+gradle-8.5/

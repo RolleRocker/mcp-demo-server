@@ -14,7 +14,7 @@ java {
 }
 
 application {
-    mainClass = 'com.example.mcp.Main'
+    mainClass = 'com.example.mcp.config.ApplicationConfiguration'
 }
 
 repositories {

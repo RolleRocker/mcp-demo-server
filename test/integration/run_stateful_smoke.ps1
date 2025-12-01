@@ -1,9 +1,9 @@
 # Integration smoke test: run the jar once and send multiple JSON-RPC requests over one stdin stream
 # Exits with code 0 on success, non-zero on failure.
 
-$jar = "target\mcp-demo-server.jar"
+$jar = "build\libs\mcp-demo-server.jar"
 if (-not (Test-Path $jar)) {
-    Write-Error "Jar not found at $jar. Build first with: mvn clean package -DskipTests"
+    Write-Error "Jar not found at $jar. Build first with: .\gradlew.bat clean shadowJar"
     exit 2
 }
 
@@ -24,9 +24,6 @@ $requests = @'
 # Write requests to a temporary input file
 $inputFile = [System.IO.Path]::GetTempFileName()
 $requests | Out-File -FilePath $inputFile -Encoding utf8
-
-# Prepare temp files for output capture
-
 
 Write-Host "Running integration test against $jar"
 

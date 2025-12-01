@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import com.example.mcp.config.ApplicationConfiguration;
+
 public class IntegrationJvmTest {
     private final PrintStream originalOut = System.out;
     private final PrintStream originalErr = System.err;
@@ -42,8 +44,8 @@ public class IntegrationJvmTest {
 
         System.setIn(new ByteArrayInputStream(requests.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
 
-        // Call main; it should read until EOF and then return
-        Main.main(new String[0]);
+        // Call main using the new hexagonal architecture configuration
+        ApplicationConfiguration.main(new String[0]);
 
         String stdout = outBuf.toString("UTF-8");
         String stderr = errBuf.toString("UTF-8");
