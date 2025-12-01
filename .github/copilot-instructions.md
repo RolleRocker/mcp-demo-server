@@ -7,66 +7,119 @@ The server communicates via **stdio transport** with JSON-RPC 2.0, allowing AI c
 
 ## Architecture
 
+This project follows **Hexagonal Architecture** (Ports & Adapters pattern) with clean separation between domain logic, application use cases, and infrastructure adapters.
+
 ### Core Communication Pattern
 - **Transport**: stdio (reads JSON-RPC from stdin, writes responses to stdout)
 - **Protocol**: JSON-RPC 2.0 with custom MCP methods
-- **Main Entry**: `com.example.mcp.DemoServer` (pure Java, no external SDK)
+- **Main Entry**: `com.example.mcp.config.ApplicationConfiguration` (dependency injection and main entry point)
 - **JSON Library**: Gson (for serialization/deserialization)
-- **Logging**: stderr (kept separate from protocol output)
+- **Logging**: stderr + file persistence to `mcp-demo-server.log` (kept separate from protocol output)
+
+### Architecture Layers
+
+#### 1. Domain Layer (`domain/`)
+Pure business logic with zero framework dependencies:
+- **Entities**: `Note`, `Calculation`, `Weather`, `FileMetadata`
+- **Value Objects**: `NoteId`, `Operation`, `Temperature`, `WindSpeed`, `Coordinates`, `CityName`, `FilePath`, `FileSize`
+- **Domain Services**: `WeatherConditionInterpreter`, `FilePathValidator`
+
+#### 2. Application Layer (`application/`)
+Use cases orchestrating domain logic:
+- **Input Ports** (`port/in/`): `CalculationUseCase`, `NoteManagementUseCase`, `WeatherQueryUseCase`, `FileOperationUseCase`, `ResourceQueryUseCase`, `PromptGenerationUseCase`
+- **Output Ports** (`port/out/`): `NoteRepository`, `WeatherServicePort`, `FileSystemPort`, `LoggingPort`, `TimeProvider`
+- **Services** (`service/`): Implementations of use cases
+
+#### 3. Adapter Layer (`adapter/`)
+- **Driving Adapters** (`in/mcp/`): `McpServer`, `McpToolHandler`, `McpResourceHandler`, `McpPromptHandler`
+- **Driven Adapters** (`out/`): `InMemoryNoteRepository`, `OpenMeteoWeatherAdapter`, `JavaNioFileSystemAdapter`, `Slf4jLoggingAdapter`, `SystemTimeProvider`
+
+#### 4. Configuration Layer (`config/`)
+- `ApplicationConfiguration` - Manual dependency injection, wires all components
 
 ### Key Files
-- `src/main/java/com/example/mcp/DemoServer.java` - Main server (600+ lines, ~90% of logic)
-  - `handleRequest()` - JSON-RPC method router
-  - `handleInitialize()` - Protocol negotiation
-  - `handleCallTool()`, `handleListTools()` - Tool execution
-  - `handleReadResource()`, `handleListResources()` - Resource serving
-  - `handleGetPrompt()`, `handleListPrompts()` - Prompt templates
-- `pom.xml` - Maven build with shade plugin (creates fat JAR)
+- `src/main/java/com/example/mcp/config/ApplicationConfiguration.java` - Entry point with dependency injection
+- `src/main/java/com/example/mcp/adapter/in/mcp/McpServer.java` - Main protocol server (~130 lines)
+  - Reads JSON-RPC from stdin, routes to handlers
+  - Delegates to `McpToolHandler`, `McpResourceHandler`, `McpPromptHandler`
+- `src/main/java/com/example/mcp/adapter/in/mcp/handler/McpToolHandler.java` - Tool routing (~400 lines)
+  - Maps tool calls to use cases
+  - Handles 7 tools: calculate, create_note, list_notes, get_weather, read_file, write_file, list_directory
+- `build.gradle` - Gradle build with Shadow plugin (creates fat JAR)
+- `pom.xml` - Maven configuration (kept for compatibility)
 
 ## Implementation Patterns
 
 ### 1. **Tools** (Interactive Functions)
-Each tool has a JSON schema for input validation. Located in `handleListTools()` and called via `handleCallTool()`:
+Each tool has a JSON schema for input validation. The architecture separates:
+- **Tool definitions** in `McpToolHandler.listTools()` - JSON schemas
+- **Tool execution** in `McpToolHandler.handleToolCall()` - routes to use cases
+- **Business logic** in application services (CalculationService, NoteService, etc.)
+- **Domain logic** in domain entities (Calculation.perform(), Note validation, etc.)
 
-- **calculate** - arithmetic (add, subtract, multiply, divide)
-- **create_note** - stores notes in `ConcurrentHashMap<Integer, Note>`
+**Available Tools:**
+- **calculate** - arithmetic (add, subtract, multiply, divide) via `CalculationUseCase`
+- **create_note** - stores notes via `NoteManagementUseCase` → `NoteRepository`
 - **list_notes** - returns all notes sorted by ID
-- **get_weather** - randomized simulation
+- **get_weather** - real weather data via `WeatherQueryUseCase` → `WeatherServicePort` (Open-Meteo API)
+- **read_file** - file reading via `FileOperationUseCase` → `FileSystemPort`
+- **write_file** - file writing with validation via `FilePathValidator`
+- **list_directory** - directory listing
 
 **Pattern**: Tool schema must include `type`, `properties` (with descriptions), and `required` array.
 
 ### 2. **Resources** (Static/Dynamic Data)
+Handled by `ResourceService` implementing `ResourceQueryUseCase`:
 - **Static**: `demo://info`, `demo://capabilities` (hardcoded responses)
-- **Dynamic**: `note://{id}` (generated from created notes in real-time)
+- **Dynamic**: `note://{id}` (generated from notes in repository)
 
-Resources are listed in `handleListResources()` and content served in `handleReadResource()`.
-
-### 3. **Prompts** (Message Templates)
-Three prompt templates with optional arguments:
-- **helpful_assistant** - accepts `task` argument
-- **code_reviewer** - accepts `language` and `code` arguments
-- **summarize_notes** - no arguments, uses current note state
-
-Pattern: Prompts return `messages` array with `role` and `content` object (type="text").
-
+Resources are listed via `ResourceQueryUseCase.listResources()` and read via `ResourceQueryUseCase.readResource(uri)`.
 ## Development Workflow
 
 ### Building
 ```powershell
+# Using Gradle (recommended)
+.\gradlew.bat build
+
+# Or using Maven (legacy support)
 mvn clean package
 ```
-Creates `target/mcp-demo-server.jar` (fat JAR with all dependencies via maven-shade-plugin).
+Creates fat JAR at:
+- **Gradle**: `build/libs/mcp-demo-server.jar` (via Shadow plugin)
+- **Maven**: `target/mcp-demo-server.jar` (via Shade plugin)
 
-**Build Output**: Check for `BUILD SUCCESS` and verify JAR exists at `target/mcp-demo-server.jar`.
+**Build Output**: Check for `BUILD SUCCESS` and verify JAR exists.
 
 ### Running Locally
 ```powershell
-java -jar target/mcp-demo-server.jar
+# Using Gradle-built JAR (recommended)
+java -jar build\libs\mcp-demo-server.jar
+
+# Or using Maven-built JAR
+java -jar target\mcp-demo-server.jar
 ```
-Server accepts stdin input, output goes to stdout (protocol), stderr (logs).
+Server accepts stdin input, output goes to stdout (protocol), stderr + file (logs to `mcp-demo-server.log`).
+
+### Testing
+```powershell
+# Run all tests
+.\gradlew.bat test
+
+# Run integration smoke test
+.\test\integration\run_stateful_smoke.ps1
+```
 
 ### Integration with Claude Desktop
 Update `%APPDATA%\Claude\claude_desktop_config.json`:
+```json
+{
+  "mcpServers": {
+    "demo": {
+      "command": "java",
+      "args": ["-jar", "C:\\mcpDemo\\build\\libs\\mcp-demo-server.jar"]
+    }
+  }
+}
 ```json
 {
   "mcpServers": {
@@ -80,19 +133,59 @@ Update `%APPDATA%\Claude\claude_desktop_config.json`:
 
 ## Code Organization Conventions
 
-### Method Naming
-- `handle{Action}` - JSON-RPC method handlers (e.g., `handleListTools`)
-- `handleCall{Type}` - Tool-specific implementations (e.g., `handleCalculate`)
+### Package Structure
+```
+com.example.mcp/
+├── config/                          # Configuration & DI
+│   └── ApplicationConfiguration.java
+├── domain/                          # Pure business logic
+│   ├── model/                       # Entities
+│   ├── valueobject/                 # Value objects
+│   └── service/                     # Domain services
+├── application/                     # Use cases
+│   ├── port/in/                     # Input ports (use case interfaces)
+│   ├── port/out/                    # Output ports (infrastructure interfaces)
+│   └── service/                     # Use case implementations
+└── adapter/                         # Infrastructure & protocol
+## Java-Specific Requirements
+
+- **JDK**: 21 (set in both `build.gradle` and `pom.xml`)
+- **Java Features Used**: Records, streams, lambdas, pattern matching, switch expressions
+- **Dependencies**: 
+  - Gson 2.10.1 (JSON processing, used only in adapters)
+  - SLF4J Simple 2.0.9 (logging abstraction)
+  - JUnit Jupiter 5.10.0 (testing)
+  - Java 21 HttpClient (built-in, used in `OpenMeteoWeatherAdapter`)
+
+### Build System
+- **Primary**: Gradle 8.5 with Shadow plugin
+- **Legacy**: Maven with Shade plugin (kept for compatibility)
+- Both produce fat JARs with all dependencies included
+
+### Architecture Note
+This is a **pure Java implementation** without an official MCP SDK. The MCP protocol is implemented manually using JSON-RPC over stdio. The hexagonal architecture ensures that protocol handling is isolated in adapters, making it easy to add other protocols (REST, gRPC) in the future.
 
 ### JSON Construction
-- Use `new JsonObject()` and `new JsonArray()` from Gson
+- Use `new JsonObject()` and `new JsonArray()` from Gson in adapters only
 - Chain `.addProperty()` for primitives, `.add()` for objects/arrays
 - Convert collections to JSON with `gson.toJsonTree()`
+- **Keep JSON handling in adapters** - domain and application use POJOs/records
 
 ### State Management
-- `notes` (static `ConcurrentHashMap`) - thread-safe in-memory store
-- `noteIdCounter` (static int) - auto-increment for note IDs
-- No persistent storage (in-memory only)
+- Notes stored via `NoteRepository` interface (implementation: `InMemoryNoteRepository` with `ConcurrentHashMap`)
+- Weather data fetched via `WeatherServicePort` interface (implementation: `OpenMeteoWeatherAdapter`)
+- File operations via `FileSystemPort` interface (implementation: `JavaNioFileSystemAdapter`)
+- Time via `TimeProvider` interface (implementation: `SystemTimeProvider` - for testability)
+- Logging via `LoggingPort` interface (implementation: `Slf4jLoggingAdapter`)
+
+### Dependency Direction
+**Critical Rule**: Dependencies flow inward only!
+```
+Adapters → Application → Domain
+```
+- **Domain** has NO dependencies (no Gson, no HTTP, no file I/O, no logging)
+- **Application** depends only on domain types and port interfaces
+- **Adapters** implement ports and depend on application/domain
 
 ## Java-Specific Requirements
 
@@ -105,9 +198,9 @@ The pom.xml comment notes that `io.modelcontextprotocol:sdk-server:0.5.0` was re
 
 ## Critical Implementation Details
 
-1. **Error Handling in Tools**: Catch exceptions in `handleCallTool()`, return `isError: true` with error text in content.
+1. **Error Handling**: Exceptions in use cases are caught by MCP handlers, converted to `isError: true` responses with error text.
 
-2. **JSON-RPC Response Structure**:
+2. **JSON-RPC Response Structure** (handled in `McpServer`):
    ```json
    {
      "jsonrpc": "2.0",
@@ -117,113 +210,188 @@ The pom.xml comment notes that `io.modelcontextprotocol:sdk-server:0.5.0` was re
    }
    ```
 
-3. **Protocol Version**: Hardcoded to `2024-11-05` in `handleInitialize()` (update if MCP spec changes).
+3. **Protocol Version**: Hardcoded to `2024-11-05` in `McpServer.handleInitialize()` (update if MCP spec changes).
 
-4. **Dynamic Resources**: Always include all current notes in `handleListResources()` to reflect state changes.
+4. **Dynamic Resources**: `ResourceService` generates note resources dynamically from `NoteRepository`.
 
-5. **No Async/Multi-threading**: Single-threaded loop reads stdin, processes, writes stdout. `ConcurrentHashMap` used for safety if future features add threading.
+5. **Hexagonal Benefits**: 
+   - All business logic testable without infrastructure
+   - Swap implementations without changing core logic (e.g., replace `InMemoryNoteRepository` with SQL)
+   - Add new protocols (REST API) by adding new driving adapters
+   - Mock all external dependencies via port interfaces
 
 ## Common Pitfalls & How to Avoid Them
 
-### 1. **Forgetting to Update `handleCallTool()` Switch Statement**
-When adding a new tool, you must add a `case` in three places:
-- `handleListTools()` - define schema and description
-- `handleCallTool()` - add case to invoke handler
-- Create `handleNewTool()` method to process logic
+### 1. **Breaking Hexagonal Architecture Dependency Rule**
+**Rule**: Dependencies must flow inward (Adapters → Application → Domain)
 
-**Pitfall**: Missing any of these causes "Unknown tool" errors or silent failures.
+**Pitfall**: Adding infrastructure dependencies to domain (e.g., Gson, HttpClient in entities)
 
-### 2. **Incorrect JSON Schema Properties**
+**Solution**: Keep domain pure. Use value objects and entities with no framework dependencies. Put all infrastructure code in adapters.
+
+### 2. **Adding New Tools Without Following the Pattern**
+When adding a new tool, you must:
+1. Define use case interface in `application/port/in/`
+2. Implement use case in `application/service/`
+3. Add tool schema in `McpToolHandler.listTools()`
+4. Add tool handler in `McpToolHandler.handleToolCall()`
+5. Wire dependencies in `ApplicationConfiguration`
+
+**Pitfall**: Skipping any step causes compilation errors or runtime failures.
+
+### 3. **Incorrect JSON Schema Properties**
 Each property in `inputSchema.properties` must have:
 - `type` (string, number, boolean, object, array)
 - `description` for client clarity
 - Corresponding entry in `required` array if mandatory
 
-**Pitfall**: Missing `description` or wrong `type` causes client confusion; missing from `required` makes parameters silently optional.
+**Pitfall**: Missing `description` or wrong `type` causes client confusion.
 
-### 3. **Not Closing Resource Loops on Dynamic Data**
-When resources depend on internal state (like notes), enumerate ALL current state in `handleListResources()`. If you skip this, clients won't see newly created resources.
+### 4. **Mixing Protocol Logic with Business Logic**
+**Pitfall**: Putting business rules in MCP handlers instead of domain/application layers.
 
-**Pitfall**: Add a note but `resources/list` doesn't return it → client gets cached old list.
+**Solution**: MCP handlers should only:
+- Parse JSON
+- Call use cases
+- Format responses
+All business logic belongs in domain entities or application services.
 
-### 4. **Mixing stdout and stderr**
-Only protocol JSON goes to stdout. Logs and debugging must go to stderr (e.g., `System.err.println()`).
+### 5. **Not Updating Dynamic Resources**
+**Pitfall**: Forgetting to enumerate state changes in `ResourceService.listResources()`.
 
-**Pitfall**: Println to stdout corrupts the protocol stream and breaks the client connection.
+**Solution**: `ResourceService` queries `NoteRepository` to generate current note resources dynamically.
 
-### 5. **Assuming Tool Arguments Are Always Present**
-Always check `.has()` before `.get()` on JsonObject, or use default values for optional arguments.
+### 6. **Mixing stdout and stderr**
+Only protocol JSON goes to stdout. Logs must go to stderr or file.
 
-**Pitfall**: If client omits an optional arg, `args.get("key").getAsString()` throws NullPointerException.
+**Pitfall**: Using `System.out.println()` corrupts the protocol stream.
 
-### 6. **String Parsing Without Bounds Checking**
-When parsing URIs like `note://{id}`, validate the ID exists before accessing the map.
+**Solution**: Use `LoggingPort` interface (implemented by `Slf4jLoggingAdapter`).
 
-**Pitfall**: `notes.get(invalidId)` returns null → NullPointerException on `.getTitle()`.
+### 7. **Assuming Tool Arguments Are Always Present**
+Always validate arguments or use Optional types.
 
-### 7. **Forgetting `gson.toJsonTree()` for Collections**
-When adding a list to JsonObject, use `gson.toJsonTree()` to properly serialize it.
+**Pitfall**: `args.get("key").getAsString()` throws NullPointerException if key missing.
 
-**Pitfall**: Directly calling `.add()` with a List causes type errors; `.addProperty()` doesn't work for complex types.
+**Solution**: Check with `.has()` first, or handle in use case with validation.
+
+### 8. **Forgetting to Wire Dependencies in ApplicationConfiguration**
+**Pitfall**: Creating new services but not adding them to dependency graph in `ApplicationConfiguration.main()`.
+
+**Solution**: All components must be instantiated and wired in `ApplicationConfiguration`.
 
 ## Extending Tools: Code Snippet
 
-To add a new tool (e.g., `save_file`), modify these three sections:
+To add a new tool following hexagonal architecture:
 
-### 1. Add to `handleListTools()`:
+### 1. Define Use Case Interface (`application/port/in/NewFeatureUseCase.java`):
 ```java
-// In handleListTools(), add this before result.add("tools", ...):
+package com.example.mcp.application.port.in;
 
-JsonObject fileToolSchemaProp = new JsonObject();
-fileToolSchemaProp.addProperty("type", "string");
-fileToolSchemaProp.addProperty("description", "File path to save to");
-fileProps.add("filePath", fileToolSchemaProp);
-
-JsonObject contentToolProp = new JsonObject();
-contentToolProp.addProperty("type", "string");
-contentToolProp.addProperty("description", "File content");
-fileProps.add("content", contentToolProp);
-
-JsonObject saveFileTool = new JsonObject();
-saveFileTool.addProperty("name", "save_file");
-saveFileTool.addProperty("description", "Save content to a file on disk");
-saveFileTool.add("inputSchema", fileSchema);
-fileSchema.addProperty("type", "object");
-fileSchema.add("properties", fileProps);
-fileSchema.add("required", gson.toJsonTree(Arrays.asList("filePath", "content")));
-tools.add(saveFileTool);
+public interface NewFeatureUseCase {
+    String executeFeature(String input);
+}
 ```
 
-### 2. Add to `handleCallTool()` switch:
+### 2. Implement Use Case (`application/service/NewFeatureService.java`):
 ```java
-case "save_file":
-    content.add(createTextContent(handleSaveFile(args)));
-    break;
-```
+package com.example.mcp.application.service;
 
-### 3. Create handler method (add before helper methods):
-```java
-private String handleSaveFile(JsonObject args) {
-    String filePath = args.get("filePath").getAsString();
-    String content = args.get("content").getAsString();
-    
-    try {
-        // Use java.nio.file.Files for safe file operations
-        java.nio.file.Files.write(
-            java.nio.file.Paths.get(filePath),
-            content.getBytes(java.nio.charset.StandardCharsets.UTF_8)
-        );
-        return "File saved successfully to: " + filePath;
-    } catch (IOException e) {
-        throw new RuntimeException("Failed to save file: " + e.getMessage());
+import com.example.mcp.application.port.in.NewFeatureUseCase;
+
+public class NewFeatureService implements NewFeatureUseCase {
+    @Override
+    public String executeFeature(String input) {
+        // Business logic here (delegate to domain if needed)
+        return "Feature executed: " + input;
     }
 }
 ```
 
-The exception in the try-catch is caught by `handleCallTool()` which already sets `isError: true`.
+### 3. Add to `McpToolHandler.listTools()`:
+```java
+// In McpToolHandler.listTools(), add this to the tools array:
+JsonObject newToolProps = new JsonObject();
+JsonObject inputProp = new JsonObject();
+inputProp.addProperty("type", "string");
+inputProp.addProperty("description", "Input for the feature");
+newToolProps.add("input", inputProp);
+
+JsonObject newToolSchema = new JsonObject();
+newToolSchema.addProperty("type", "object");
+newToolSchema.add("properties", newToolProps);
+newToolSchema.add("required", gson.toJsonTree(List.of("input")));
+
+JsonObject newTool = new JsonObject();
+newTool.addProperty("name", "new_feature");
+newTool.addProperty("description", "Execute new feature");
+newTool.add("inputSchema", newToolSchema);
+tools.add(newTool);
+```
+
+### 4. Add to `McpToolHandler.handleToolCall()` switch:
+```java
+case "new_feature":
+    String input = args.get("input").getAsString();
+    String result = newFeatureUseCase.executeFeature(input);
+    content.add(createTextContent(result));
+    break;
+```
+
+### 5. Wire in `ApplicationConfiguration.main()`:
+```java
+// Add to ApplicationConfiguration.main():
+NewFeatureUseCase newFeatureUseCase = new NewFeatureService();
+
+// Update McpToolHandler constructor call to include new use case:
+McpToolHandler toolHandler = new McpToolHandler(
+    calculationUseCase,
+    noteManagementUseCase,
+    weatherQueryUseCase,
+    fileOperationUseCase,
+    newFeatureUseCase  // Add here
+);
+```
+
+This pattern maintains clean architecture: domain logic → use case → adapter → protocol.
 
 ## Testing Approach
-Manual testing only (no unit tests in repo):
-1. Build with `mvn clean package`
-2. Configure Claude Desktop or test via command-line JSON-RPC
-3. Verify tool execution, resource reading, and prompt retrieval through client interactions
+
+### Current Testing
+- **Integration Test**: `IntegrationJvmTest.java` - Calls `ApplicationConfiguration.main()` with piped stdin/stdout
+- **Smoke Test**: `test/integration/run_stateful_smoke.ps1` - 10 JSON-RPC requests testing tools, resources, prompts
+
+### Testing Strategy by Layer
+
+#### Domain Layer Tests (Unit Tests)
+Test pure business logic:
+- Value object validation (Temperature >= absolute zero, NoteId > 0)
+- Entity business rules (Note title length, Calculation operations)
+- Domain services (weather code interpretation, path validation)
+- **No mocks needed** - pure Java, no dependencies
+
+#### Application Layer Tests (Service Tests)
+Test use case implementations with mocked ports:
+- Mock `NoteRepository` to test `NoteService`
+- Mock `WeatherServicePort` to test `WeatherQueryService`
+- Mock `FileSystemPort` to test `FileService`
+- Verify use case orchestration logic
+
+#### Adapter Layer Tests (Integration Tests)
+Test infrastructure implementations:
+- `InMemoryNoteRepository` - verify ConcurrentHashMap operations
+- `OpenMeteoWeatherAdapter` - test with real API or mock HTTP responses
+- `JavaNioFileSystemAdapter` - test with temporary directories
+- `McpToolHandler` - test JSON schema generation and tool routing
+
+### Running Tests
+```powershell
+# All tests
+.\gradlew.bat test
+
+# Integration smoke test
+.\test\integration\run_stateful_smoke.ps1
+
+# Manual protocol test
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | java -jar build\libs\mcp-demo-server.jar
+```
